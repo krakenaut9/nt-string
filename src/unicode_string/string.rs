@@ -292,6 +292,8 @@ impl NtUnicodeString {
     /// Returns an [`NtStringError::BufferSizeExceedsU16`] error if the resulting capacity would exceed
     /// 65535 bytes.
     ///
+    /// Returns an [`NtStringError::InsufficientResources`] error if [`alloc::alloc`] returns zero ptr.
+    ///
     /// Note that every UTF-16 character consumes 2 or 4 bytes.
     pub fn try_reserve(&mut self, additional: u16) -> Result<()> {
         if self.remaining_capacity() >= additional {
@@ -307,17 +309,25 @@ impl NtUnicodeString {
             self.raw.maximum_length = new_capacity;
             let new_layout = self.layout();
 
-            self.raw.buffer = unsafe { alloc::alloc(new_layout) } as *mut u16;
+            let buffer = unsafe { alloc::alloc(new_layout) } as *mut u16;
+            if buffer.is_null() {
+                return Err(NtStringError::InsufficientResources);
+            }
+            self.raw.buffer = buffer;
         } else {
             let old_layout = self.layout();
 
-            self.raw.buffer = unsafe {
+            let buffer = unsafe {
                 alloc::realloc(
                     self.raw.buffer as *mut u8,
                     old_layout,
                     usize::from(new_capacity),
                 )
             } as *mut u16;
+            if buffer.is_null() {
+                return Err(NtStringError::InsufficientResources);
+            }
+            self.raw.buffer = buffer;
 
             self.raw.maximum_length = new_capacity;
         }
