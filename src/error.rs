@@ -19,6 +19,8 @@ pub enum NtStringError {
         /// Numeric value of the unpaired surrogate
         unpaired_surrogate: u16,
     },
+    /// The data could not be allocated due to insufficient resources.
+    InsufficientResources,
 }
 
 impl From<widestring::error::DecodeUtf16Error> for NtStringError {
