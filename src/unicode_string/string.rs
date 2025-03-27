@@ -65,7 +65,7 @@ impl NtUnicodeString {
     /// [`try_from_u16_until_nul`]: Self::try_from_u16_until_nul
     pub fn try_from_u16(buffer: &[u16]) -> Result<Self> {
         let unicode_str = NtUnicodeStr::try_from_u16(buffer)?;
-        Ok(Self::from(&unicode_str))
+        Self::try_from(&unicode_str)
     }
 
     /// Creates an [`NtUnicodeString`] from an existing [`u16`] string buffer that contains at least one NUL character.
@@ -85,7 +85,7 @@ impl NtUnicodeString {
     /// [`try_from_u16`]: Self::try_from_u16
     pub fn try_from_u16_until_nul(buffer: &[u16]) -> Result<Self> {
         let unicode_str = NtUnicodeStr::try_from_u16_until_nul(buffer)?;
-        Ok(Self::from(&unicode_str))
+        Self::try_from(&unicode_str)
     }
 
     /// Appends the given [`char`] to the end of this string.
@@ -335,16 +335,26 @@ impl NtUnicodeString {
         Ok(())
     }
 
-    /// Creates an empty [`NtUnicodeString`] with at least the specified capacity.
+    /// Tries to creates an empty [`NtUnicodeString`] with at least the specified capacity.
     ///
     /// This will preallocate a buffer with the given capacity.
     /// If the given capacity is `0`, no allocation will occur, and this method is identical to the [`new`] method.
     ///
     /// [`new`]: Self::new
-    pub fn with_capacity(capacity: u16) -> Self {
+    /// 
+    /// Returns [`NtStringError::InsufficientResources`] if memory allocation fails.
+    pub fn try_with_capacity(capacity: u16) -> Result<Self> {
         let mut string = Self::new();
-        string.try_reserve(capacity).unwrap();
-        string
+        string.try_reserve(capacity)?;
+        Ok(string)
+    }
+
+    /// Tries to create a copy of this [`NtUnicodeString`].
+    ///
+    /// This implementation keeps the original capacity.
+    #[cfg(test)]
+    fn try_clone(&self) -> Result<Self> {
+        NtUnicodeString::try_from(self.as_unicode_str())
     }
 }
 
@@ -408,15 +418,6 @@ impl AddAssign<&U16Str> for NtUnicodeString {
     }
 }
 
-impl Clone for NtUnicodeString {
-    /// Creates a copy of this [`NtUnicodeString`].
-    ///
-    /// This implementation keeps the original capacity.
-    fn clone(&self) -> Self {
-        NtUnicodeString::from(self.as_unicode_str())
-    }
-}
-
 impl Default for NtUnicodeString {
     fn default() -> Self {
         Self::new()
@@ -469,12 +470,14 @@ impl From<char> for NtUnicodeString {
     }
 }
 
-impl<'a> From<&NtUnicodeStr<'a>> for NtUnicodeString {
-    /// Creates an [`NtUnicodeString`] from an existing [`NtUnicodeStr`].
+impl<'a> TryFrom<&NtUnicodeStr<'a>> for NtUnicodeString {
+    type Error = NtStringError;
+    /// Tries to creates an [`NtUnicodeString`] from an existing [`NtUnicodeStr`].
     ///
-    /// This implementation keeps the original capacity.
-    fn from(unicode_str: &NtUnicodeStr) -> Self {
-        let mut new_string = Self::with_capacity(unicode_str.capacity());
+    /// This implementation keeps the original capacity. Returns [`NtStringError::InsufficientResources`]
+    /// if memory allocation fails.
+    fn try_from(unicode_str: &NtUnicodeStr) -> Result<Self> {
+        let mut new_string = Self::try_with_capacity(unicode_str.capacity())?;
 
         if !unicode_str.is_empty() {
             new_string.raw.length = unicode_str.len();
@@ -483,7 +486,7 @@ impl<'a> From<&NtUnicodeStr<'a>> for NtUnicodeString {
                 .copy_from_slice(unicode_str.as_slice());
         }
 
-        new_string
+        Ok(new_string)
     }
 }
 
@@ -624,7 +627,7 @@ impl TryFrom<&U16CStr> for NtUnicodeString {
     /// See the [module-level documentation](super) for the implications of that.
     fn try_from(value: &U16CStr) -> Result<Self> {
         let unicode_str = NtUnicodeStr::try_from(value)?;
-        Ok(Self::from(&unicode_str))
+        Self::try_from(&unicode_str)
     }
 }
 
@@ -637,7 +640,7 @@ impl TryFrom<&U16Str> for NtUnicodeString {
     /// See the [module-level documentation](super) for the implications of that.
     fn try_from(value: &U16Str) -> Result<Self> {
         let unicode_str = NtUnicodeStr::try_from(value)?;
-        Ok(Self::from(&unicode_str))
+        Self::try_from(&unicode_str)
     }
 }
 
@@ -699,7 +702,7 @@ mod tests {
         let hello_again = NtUnicodeString::try_from("Hello again").unwrap();
         assert_ne!(hello, hello_again);
 
-        let mut hello_clone = hello.clone();
+        let mut hello_clone = hello.try_clone().unwrap();
         assert_eq!(hello, hello_clone);
 
         hello_clone.try_reserve(42).unwrap();
